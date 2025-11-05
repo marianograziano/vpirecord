@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grabador de Ejercicios</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📹 Grabador de Ejercicios</h1>
+            <p class="subtitle">Registra tus ejercicios con voz y video</p>
+        </header>
+
+        <main>
+            <!-- Sección de grabación -->
+            <section class="recording-section">
+                <div class="camera-selector">
+                    <label for="cameraSelect">Seleccionar cámara:</label>
+                    <select id="cameraSelect">
+                        <option value="">Cargando cámaras...</option>
+                    </select>
+                </div>
+
+                <div class="video-container">
+                    <video id="videoPreview" autoplay muted playsinline></video>
+                    <video id="videoPlayback" controls style="display: none;"></video>
+                </div>
+
+                <div class="controls">
+                    <input
+                        type="text"
+                        id="exerciseName"
+                        placeholder="Nombre del ejercicio (ej: Sentadillas, Flexiones...)"
+                        maxlength="50"
+                    >
+
+                    <div class="button-group">
+                        <button id="startBtn" class="btn btn-primary">
+                            <span class="btn-icon">⚫</span> Iniciar Grabación
+                        </button>
+                        <button id="stopBtn" class="btn btn-secondary" disabled>
+                            <span class="btn-icon">⏹</span> Detener
+                        </button>
+                        <button id="saveBtn" class="btn btn-success" style="display: none;">
+                            <span class="btn-icon">💾</span> Guardar Ejercicio
+                        </button>
+                        <button id="discardBtn" class="btn btn-danger" style="display: none;">
+                            <span class="btn-icon">🗑</span> Descartar
+                        </button>
+                    </div>
+
+                    <div id="recordingTimer" class="timer" style="display: none;">
+                        <span class="recording-dot"></span>
+                        <span id="timerDisplay">00:00</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sección de historial -->
+            <section class="history-section">
+                <div class="history-header">
+                    <h2>📋 Historial de Ejercicios</h2>
+                    <button id="clearHistoryBtn" class="btn btn-small">Limpiar Historial</button>
+                </div>
+
+                <div id="exerciseList" class="exercise-list">
+                    <p class="empty-message">No hay ejercicios registrados aún</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Grabación local en el navegador - Tus datos no se envían a ningún servidor</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
