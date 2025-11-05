@@ -1,11 +1,14 @@
 // Estado global de la aplicación
 const AppState = {
-    mediaRecorder: null,
+    videoRecorder: null,
+    audioRecorder: null,
     mediaStream: null,
-    recordedChunks: [],
+    videoChunks: [],
+    audioChunks: [],
     recordingStartTime: null,
     timerInterval: null,
     currentVideoBlob: null,
+    currentAudioBlob: null,
     exercises: []
 };
 
@@ -15,6 +18,7 @@ const elements = {
     videoPreview: document.getElementById('videoPreview'),
     videoPlayback: document.getElementById('videoPlayback'),
     exerciseName: document.getElementById('exerciseName'),
+    exerciseType: document.getElementById('exerciseType'),
     startBtn: document.getElementById('startBtn'),
     stopBtn: document.getElementById('stopBtn'),
     saveBtn: document.getElementById('saveBtn'),
@@ -31,6 +35,10 @@ async function init() {
         await loadCameras();
         loadExercises();
         setupEventListeners();
+
+        // Deshabilitar botón de inicio hasta que se complete el formulario
+        elements.startBtn.disabled = true;
+
         console.log('Aplicación iniciada correctamente');
     } catch (error) {
         console.error('Error al inicializar la aplicación:', error);
@@ -106,6 +114,19 @@ function setupEventListeners() {
     elements.saveBtn.addEventListener('click', saveExercise);
     elements.discardBtn.addEventListener('click', discardRecording);
     elements.clearHistoryBtn.addEventListener('click', clearHistory);
+
+    // Validar formulario antes de permitir grabar
+    elements.exerciseName.addEventListener('input', validateForm);
+    elements.exerciseType.addEventListener('change', validateForm);
+}
+
+// Validar que los campos del formulario estén completos
+function validateForm() {
+    const name = elements.exerciseName.value.trim();
+    const type = elements.exerciseType.value;
+
+    // Solo habilitar el botón si ambos campos están completos
+    elements.startBtn.disabled = !(name && type);
 }
 
 // Iniciar grabación
@@ -115,31 +136,85 @@ function startRecording() {
         return;
     }
 
-    try {
-        AppState.recordedChunks = [];
+    const name = elements.exerciseName.value.trim();
+    const type = elements.exerciseType.value;
 
-        // Configurar MediaRecorder con formato WebM
-        const options = {
-            mimeType: 'video/webm;codecs=vp9,opus',
+    if (!name || !type) {
+        alert('Por favor, completa el nombre del ejercicio y el tipo de ejecución.');
+        return;
+    }
+
+    try {
+        AppState.videoChunks = [];
+        AppState.audioChunks = [];
+
+        // Crear stream solo de video (sin audio)
+        const videoStream = new MediaStream(
+            AppState.mediaStream.getVideoTracks()
+        );
+
+        // Crear stream solo de audio (sin video)
+        const audioStream = new MediaStream(
+            AppState.mediaStream.getAudioTracks()
+        );
+
+        // Configurar MediaRecorder para video (sin audio)
+        const videoOptions = {
+            mimeType: 'video/webm;codecs=vp9',
             videoBitsPerSecond: 2500000 // 2.5 Mbps
         };
 
         // Fallback si el formato no está soportado
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options.mimeType = 'video/webm';
+        if (!MediaRecorder.isTypeSupported(videoOptions.mimeType)) {
+            videoOptions.mimeType = 'video/webm';
         }
 
-        AppState.mediaRecorder = new MediaRecorder(AppState.mediaStream, options);
+        AppState.videoRecorder = new MediaRecorder(videoStream, videoOptions);
 
-        AppState.mediaRecorder.ondataavailable = (event) => {
+        AppState.videoRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
-                AppState.recordedChunks.push(event.data);
+                AppState.videoChunks.push(event.data);
             }
         };
 
-        AppState.mediaRecorder.onstop = onRecordingStopped;
+        // Configurar MediaRecorder para audio
+        // Intentar usar audio/wav, si no está disponible usar audio/webm
+        let audioMimeType = 'audio/wav';
+        if (!MediaRecorder.isTypeSupported(audioMimeType)) {
+            audioMimeType = 'audio/webm;codecs=opus';
+            if (!MediaRecorder.isTypeSupported(audioMimeType)) {
+                audioMimeType = 'audio/webm';
+            }
+        }
 
-        AppState.mediaRecorder.start(100); // Recopilar datos cada 100ms
+        const audioOptions = {
+            mimeType: audioMimeType,
+            audioBitsPerSecond: 128000 // 128 kbps
+        };
+
+        AppState.audioRecorder = new MediaRecorder(audioStream, audioOptions);
+
+        AppState.audioRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                AppState.audioChunks.push(event.data);
+            }
+        };
+
+        // Configurar callback cuando ambas grabaciones se detengan
+        let stoppedCount = 0;
+        const onStopped = () => {
+            stoppedCount++;
+            if (stoppedCount === 2) {
+                onRecordingStopped();
+            }
+        };
+
+        AppState.videoRecorder.onstop = onStopped;
+        AppState.audioRecorder.onstop = onStopped;
+
+        // Iniciar ambas grabaciones
+        AppState.videoRecorder.start(100); // Recopilar datos cada 100ms
+        AppState.audioRecorder.start(100);
         AppState.recordingStartTime = Date.now();
 
         // Iniciar timer
@@ -148,7 +223,8 @@ function startRecording() {
         // Actualizar UI
         updateUIForRecording(true);
 
-        console.log('Grabación iniciada');
+        console.log('Grabación iniciada (audio y video por separado)');
+        console.log('Audio formato:', audioMimeType);
     } catch (error) {
         console.error('Error al iniciar grabación:', error);
         alert('Error al iniciar la grabación. Por favor, intenta de nuevo.');
@@ -157,8 +233,19 @@ function startRecording() {
 
 // Detener grabación
 function stopRecording() {
-    if (AppState.mediaRecorder && AppState.mediaRecorder.state !== 'inactive') {
-        AppState.mediaRecorder.stop();
+    let stopped = false;
+
+    if (AppState.videoRecorder && AppState.videoRecorder.state !== 'inactive') {
+        AppState.videoRecorder.stop();
+        stopped = true;
+    }
+
+    if (AppState.audioRecorder && AppState.audioRecorder.state !== 'inactive') {
+        AppState.audioRecorder.stop();
+        stopped = true;
+    }
+
+    if (stopped) {
         stopTimer();
         console.log('Grabación detenida');
     }
@@ -166,57 +253,84 @@ function stopRecording() {
 
 // Cuando se detiene la grabación
 function onRecordingStopped() {
-    const blob = new Blob(AppState.recordedChunks, { type: 'video/webm' });
-    AppState.currentVideoBlob = blob;
+    // Crear blob de video (sin audio)
+    const videoBlob = new Blob(AppState.videoChunks, { type: 'video/webm' });
+    AppState.currentVideoBlob = videoBlob;
 
-    // Mostrar preview del video grabado
+    // Crear blob de audio
+    // Determinar el tipo MIME correcto
+    let audioType = 'audio/wav';
+    if (AppState.audioChunks.length > 0) {
+        audioType = AppState.audioChunks[0].type || 'audio/webm';
+    }
+
+    const audioBlob = new Blob(AppState.audioChunks, { type: audioType });
+    AppState.currentAudioBlob = audioBlob;
+
+    // Mostrar preview del video grabado (sin audio en el preview)
     elements.videoPreview.style.display = 'none';
     elements.videoPlayback.style.display = 'block';
-    elements.videoPlayback.src = URL.createObjectURL(blob);
+    elements.videoPlayback.src = URL.createObjectURL(videoBlob);
 
     // Actualizar UI
     updateUIForRecording(false);
     elements.saveBtn.style.display = 'inline-flex';
     elements.discardBtn.style.display = 'inline-flex';
 
-    console.log('Video listo para guardar o descartar');
+    console.log('Video y audio listos para guardar o descartar');
+    console.log('Video size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
+    console.log('Audio size:', (audioBlob.size / 1024 / 1024).toFixed(2), 'MB');
+    console.log('Audio type:', audioType);
 }
 
 // Guardar ejercicio
 function saveExercise() {
     const name = elements.exerciseName.value.trim();
+    const type = elements.exerciseType.value;
 
-    if (!name) {
-        alert('Por favor, ingresa un nombre para el ejercicio.');
-        elements.exerciseName.focus();
+    if (!name || !type) {
+        alert('Por favor, completa todos los datos del ejercicio.');
         return;
     }
 
-    if (!AppState.currentVideoBlob) {
-        alert('No hay ningún video para guardar.');
+    if (!AppState.currentVideoBlob || !AppState.currentAudioBlob) {
+        alert('No hay ningún video o audio para guardar.');
         return;
     }
 
-    // Convertir blob a base64 para almacenamiento
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        const exercise = {
-            id: Date.now(),
-            name: name,
-            date: new Date().toISOString(),
-            duration: elements.timerDisplay.textContent,
-            videoData: reader.result
+    // Convertir video blob a base64
+    const videoReader = new FileReader();
+    videoReader.onloadend = () => {
+        const videoData = videoReader.result;
+
+        // Convertir audio blob a base64
+        const audioReader = new FileReader();
+        audioReader.onloadend = () => {
+            const audioData = audioReader.result;
+
+            const exercise = {
+                id: Date.now(),
+                name: name,
+                type: type,
+                date: new Date().toISOString(),
+                duration: elements.timerDisplay.textContent,
+                videoData: videoData,
+                audioData: audioData,
+                audioType: AppState.currentAudioBlob.type
+            };
+
+            AppState.exercises.push(exercise);
+            saveExercisesToStorage();
+            renderExercises();
+            resetRecordingState();
+
+            console.log('Ejercicio guardado:', exercise.name);
         };
 
-        AppState.exercises.push(exercise);
-        saveExercisesToStorage();
-        renderExercises();
-        resetRecordingState();
-
-        console.log('Ejercicio guardado:', exercise.name);
+        audioReader.readAsDataURL(AppState.currentAudioBlob);
     };
 
-    reader.readAsDataURL(AppState.currentVideoBlob);
+    videoReader.readAsDataURL(AppState.currentVideoBlob);
 }
 
 // Descartar grabación
@@ -230,14 +344,17 @@ function discardRecording() {
 // Resetear estado de grabación
 function resetRecordingState() {
     AppState.currentVideoBlob = null;
-    AppState.recordedChunks = [];
+    AppState.currentAudioBlob = null;
+    AppState.videoChunks = [];
+    AppState.audioChunks = [];
     elements.exerciseName.value = '';
+    elements.exerciseType.value = '';
     elements.timerDisplay.textContent = '00:00';
     elements.saveBtn.style.display = 'none';
     elements.discardBtn.style.display = 'none';
     elements.videoPlayback.style.display = 'none';
     elements.videoPreview.style.display = 'block';
-    elements.startBtn.disabled = false;
+    elements.startBtn.disabled = true; // Deshabilitado hasta que se complete el formulario
 }
 
 // Timer de grabación
@@ -266,6 +383,7 @@ function updateUIForRecording(isRecording) {
     elements.stopBtn.disabled = !isRecording;
     elements.cameraSelect.disabled = isRecording;
     elements.exerciseName.disabled = isRecording;
+    elements.exerciseType.disabled = isRecording;
 }
 
 // Guardar ejercicios en localStorage
@@ -312,6 +430,14 @@ function renderExercises() {
             minute: '2-digit'
         });
 
+        // Obtener etiqueta del tipo de ejercicio
+        const typeLabels = {
+            'solo': 'Solo',
+            'velo': 'Con velo',
+            'complemento': 'Con complemento'
+        };
+        const typeLabel = exercise.type ? typeLabels[exercise.type] || exercise.type : 'No especificado';
+
         return `
             <div class="exercise-item" data-id="${exercise.id}">
                 <div class="exercise-header">
@@ -320,14 +446,18 @@ function renderExercises() {
                         <div class="exercise-meta">
                             <div>📅 ${formattedDate}</div>
                             <div>⏱️ Duración: ${exercise.duration}</div>
+                            <div>🎭 Tipo: ${typeLabel}</div>
                         </div>
                     </div>
                     <div class="exercise-actions">
                         <button class="btn-play" onclick="togglePlayExercise(${exercise.id})">
                             ▶️ Ver
                         </button>
-                        <button class="btn-download" onclick="downloadExercise(${exercise.id})">
-                            ⬇️ Descargar
+                        <button class="btn-download" onclick="downloadExercise(${exercise.id}, 'video')">
+                            ⬇️ Video
+                        </button>
+                        <button class="btn-download" onclick="downloadExercise(${exercise.id}, 'audio')">
+                            🎵 Audio
                         </button>
                         <button class="btn-delete" onclick="deleteExercise(${exercise.id})">
                             🗑️ Eliminar
@@ -338,6 +468,13 @@ function renderExercises() {
                     <video controls>
                         <source src="${exercise.videoData}" type="video/webm">
                     </video>
+                    ${exercise.audioData ? `
+                    <div class="audio-player">
+                        <audio controls>
+                            <source src="${exercise.audioData}" type="${exercise.audioType || 'audio/webm'}">
+                        </audio>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -360,18 +497,32 @@ function togglePlayExercise(id) {
 }
 
 // Descargar ejercicio
-function downloadExercise(id) {
+function downloadExercise(id, type = 'video') {
     const exercise = AppState.exercises.find(ex => ex.id === id);
     if (!exercise) return;
 
     const link = document.createElement('a');
-    link.href = exercise.videoData;
-    link.download = `${exercise.name.replace(/\s+/g, '_')}_${new Date(exercise.date).toISOString().split('T')[0]}.webm`;
+    const baseName = `${exercise.name.replace(/\s+/g, '_')}_${new Date(exercise.date).toISOString().split('T')[0]}`;
+
+    if (type === 'audio') {
+        if (!exercise.audioData) {
+            alert('Este ejercicio no tiene audio guardado.');
+            return;
+        }
+        link.href = exercise.audioData;
+        // Determinar extensión según el tipo
+        const extension = exercise.audioType && exercise.audioType.includes('wav') ? 'wav' : 'webm';
+        link.download = `${baseName}_audio.${extension}`;
+    } else {
+        link.href = exercise.videoData;
+        link.download = `${baseName}_video.webm`;
+    }
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    console.log('Ejercicio descargado:', exercise.name);
+    console.log(`${type === 'audio' ? 'Audio' : 'Video'} descargado:`, exercise.name);
 }
 
 // Eliminar ejercicio
