@@ -29,12 +29,28 @@
                 </div>
 
                 <div class="controls">
-                    <input
-                        type="text"
-                        id="exerciseName"
-                        placeholder="Nombre del ejercicio (ej: Sentadillas, Flexiones...)"
-                        maxlength="50"
-                    >
+                    <div class="exercise-form">
+                        <div class="form-group">
+                            <label for="exerciseName">Nombre del ejercicio:</label>
+                            <input
+                                type="text"
+                                id="exerciseName"
+                                placeholder="Ej: Sentadillas, Flexiones, Giros..."
+                                maxlength="50"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="exerciseType">Tipo de ejecución:</label>
+                            <select id="exerciseType" required>
+                                <option value="">Selecciona una opción...</option>
+                                <option value="solo">Solo</option>
+                                <option value="velo">Con velo</option>
+                                <option value="complemento">Con complemento</option>
+                            </select>
+                        </div>
+                    </div>
 
                     <div class="button-group">
                         <button id="startBtn" class="btn btn-primary">
